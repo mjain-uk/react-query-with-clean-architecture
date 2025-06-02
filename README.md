@@ -1,54 +1,152 @@
-# React + TypeScript + Vite
+# React Query with Clean Architecture
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+This project demonstrates how to integrate TanStack Query (React Query) with Clean Architecture principles in a React TypeScript application.
 
-Currently, two official plugins are available:
+## Architecture Overview
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+### Core Layers
 
-## Expanding the ESLint configuration
+1. **Domain Layer**
+   - Contains business entities and interfaces
+   - Defines core business rules
+   - Independent of external frameworks
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+2. **Repository Layer**
+   - Implements data access logic
+   - Implements domain interfaces
+   - Handles API calls and data transformations
 
-```js
-export default tseslint.config({
-  extends: [
-    // Remove ...tseslint.configs.recommended and replace with this
-    ...tseslint.configs.recommendedTypeChecked,
-    // Alternatively, use this for stricter rules
-    ...tseslint.configs.strictTypeChecked,
-    // Optionally, add this for stylistic rules
-    ...tseslint.configs.stylisticTypeChecked,
-  ],
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
+3. **Use Case Layer**
+   - Contains business logic
+   - Implements specific application features
+
+4. **Presentation Layer**
+   - React components and hooks
+   - Uses React Query for data fetching and caching
+   - Implements UI
+
+### Key Features
+
+- **Parent-Child Entity Relationship**
+  - Parent entity (`ParentEntity`) serves as the base data source
+  - Child entity (`FirstDependent`) depends on parent data
+  - Child entity uses parent data to manipulate and show some other meaningful information
+  - Smart caching through React Query
+
+- **Caching Strategy**
+  - Utilizes React Query's cache for parent entity data
+  - Child entities can access cached parent data
+  - Reduces unnecessary API calls
+
+### Implementation Details
+
+#### Parent Entity
+```typescript
+// Domain
+interface IParentEntity {
+    getTodo1(): Promise<Todo>
+}
+
+// Repository
+class ParentEntityRepository implements IParentEntity {
+    async getTodo1(): Promise<Todo> {
+        // API call implementation
+    }
+}
+
+// Use Case
+class GetTodo {
+    constructor(private readonly parentEntityRepository: ParentEntityRepository) {}
+    async execute(): Promise<Todo> {
+        return this.parentEntityRepository.getTodo1();
+    }
+}
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+#### Dependent Entity
+```typescript
+// Domain
+interface IFirstDependent {
+    getTodoAnalytics(todo: Todo | undefined): Promise<TodoAnalytics>
+}
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+// Repository
+class FirstDependentRepository implements IFirstDependent {
+  constructor(
+    private readonly parentEntityRepository: ParentEntityRepository
+  ) {}
 
-export default tseslint.config({
-  plugins: {
-    // Add the react-x and react-dom plugins
-    'react-x': reactX,
-    'react-dom': reactDom,
-  },
-  rules: {
-    // other rules...
-    // Enable its recommended typescript rules
-    ...reactX.configs['recommended-typescript'].rules,
-    ...reactDom.configs.recommended.rules,
-  },
-})
+  async getTodoAnalytics(todo: Todo | undefined): Promise<TodoAnalytics> {
+    // We provide todo through cache in use case, if not, then it can invoke the parent's get method to get data
+    // We can create a base class to do this functionality without the need to repeat
+    if (!todo) {
+      todo = await this.parentEntityRepository.getTodo1();
+    }
+    const completionRate = todo.completed ? 100 : 0;
+    const titleLength = todo.title.length;
+    return {
+      completionRate,
+      titleLength,
+    };
+  }
+}
 ```
+
+### React Query Integration
+
+The project demonstrates how to:
+1. Use React Query for data fetching and caching
+2. Share cached data between dependent entities
+3. Maintain clean architecture while leveraging React Query's features
+
+```typescript
+// Example of using cached data in dependent entity
+class GetTodoAnalytics {
+    async execute(): Promise<TodoAnalytics> {
+    const cachedTodo = this.queryClient?.getQueryData<Todo | undefined>([
+      "parent-entity",
+    ]);
+
+    return this.firstDependentRepository.getTodoAnalytics(cachedTodo);
+}
+```
+
+## Best Practices Implemented
+
+1. **Dependency Injection**
+   - Repositories are injected into use cases
+   - QueryClient is injected for cache access
+
+2. **Interface Segregation**
+   - Clear interfaces for each entity
+   - Separation of concerns between layers
+
+3. **Single Responsibility**
+   - Each class has a single, well-defined purpose
+   - Clear separation between data access and business logic
+
+4. **Caching Strategy**
+   - Efficient use of React Query's cache
+   - Smart fallback to API calls when cache is empty
+
+## Getting Started
+
+1. Install dependencies:
+```bash
+npm install
+```
+
+2. Run the development server:
+```bash
+npm run dev
+```
+
+## Testing
+
+Open netowroks tab and you will observe a single API call to /todos for parent and child component
+
+Suggestions for improvement:
+
+1. **Query client provider**: Can have a single class to inject query client without the need to repeat us
+
+
